@@ -1,4 +1,4 @@
-/.env
+/.env.bak
 /get_audit.log
 /mail_audit.csv
 /mail_audit.csv_25-03-28_11-28-24.csv
