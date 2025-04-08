@@ -86,7 +86,7 @@ def arg_parser():
         return int(value)
 
     parser.add_argument(
-        "--date-ago",
+        "--days-ago",
         help="Number of days ago to search and download audit log records [0, 90]",
         type=argument_range,
         required=False,
@@ -110,13 +110,13 @@ def main():
         parsr.print_usage()
         sys.exit(EXIT_CODE)
 
-    if args.date_ago is None: 
-        logger.warning("Command line argument 'date_ago' is not set. Download all records.")
+    if args.days_ago is None: 
+        logger.warning("Command line argument 'days_ago' is not set. Using default value - {DEFAULT_DAYS_AGO} days ago  }.")
         args.date_ago = DEFAULT_DAYS_AGO
 
-    days_ago = args.date_ago
+    days_ago = args.days_ago
     imap_messages = {}
-    records = fetch_audit_logs(settings, date_ago=days_ago)
+    records = fetch_audit_logs(settings, days_ago=days_ago)
     records = FilterEvents(records)
     target_records = []
     #print(records)
@@ -182,8 +182,8 @@ def get_settings():
     )
     return settings
 
-def fetch_audit_logs(settings: "SettingParams", date_ago: int):
-    day_last_check = (datetime.now().replace(hour=0, minute=0, second=0) - timedelta(days=date_ago)).strftime("%Y-%m-%dT%H:%M:%SZ")
+def fetch_audit_logs(settings: "SettingParams", days_ago: int):
+    day_last_check = (datetime.now().replace(hour=0, minute=0, second=0) - timedelta(days=days_ago)).strftime("%Y-%m-%dT%H:%M:%SZ")
     log_records = []
 
     url = f"{DEFAULT_360_API_URL}/security/v1/org/{settings.organization_id}/audit_log/mail"
@@ -310,6 +310,7 @@ async def get_imap_messages(user_mail: str, token: str, days_ago: int, imap_mess
     date_days_ago = today - timedelta(days=days_ago)
     search_criteria = f'(SINCE {date_days_ago.strftime("%d-%b-%Y")})'
     with concurrent.futures.ThreadPoolExecutor() as pool:
+        logger.debug(f"Connect to IMAP server for {user_mail}")
         await loop.run_in_executor(pool, log_debug, f"Connect to IMAP server for {user_mail}")
     try:
         imap_connector = aioimaplib.IMAP4_SSL(host=DEFAULT_IMAP_SERVER, port=DEFAULT_IMAP_PORT)
