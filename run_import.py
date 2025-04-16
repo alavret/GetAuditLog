@@ -6,6 +6,7 @@ import logging.handlers as handlers
 import os.path
 import sys
 from datetime import datetime, timedelta
+from dateutil.relativedelta import relativedelta
 from os import environ
 import re
 import csv
@@ -55,50 +56,58 @@ file_handler.setFormatter(logging.Formatter('%(asctime)s.%(msecs)03d %(levelname
 logger.addHandler(console_handler)
 logger.addHandler(file_handler)
 
-def arg_parser():
-    parser = argparse.ArgumentParser(
-        description=dedent(
-            """
-            Script for downloading audit log records from Yandex 360.
+@dataclass
+class SettingParams:
+    oauth_token: str
+    organization_id: int
+    output_file: str
+    application_client_id: str
+    application_client_secret: str
+    
+# def arg_parser():
+#     parser = argparse.ArgumentParser(
+#         description=dedent(
+#             """
+#             Script for downloading audit log records from Yandex 360.
 
-            Define Environment variables or use .env file to set values of those variables:
-            OAUTH_TOKEN_ARG - OAuth Token,
-            ORGANIZATION_ID_ARG - Organization ID,
-            APPLICATION_CLIENT_ID_ARG - WEB Application ClientID,
-            APPLICATION_CLIENT_SECRET_ARG - WEB Application secret
+#             Define Environment variables or use .env file to set values of those variables:
+#             OAUTH_TOKEN_ARG - OAuth Token,
+#             ORGANIZATION_ID_ARG - Organization ID,
+#             APPLICATION_CLIENT_ID_ARG - WEB Application ClientID,
+#             APPLICATION_CLIENT_SECRET_ARG - WEB Application secret
 
-            For example:
-            OAUTH_TOKEN_ARG = "AgAAgfAAAAD4beAkEsWrefhNeyN1TVYjGT1k",
-            ORGANIZATION_ID_ARG =1 23
-            """
-        ),
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
+#             For example:
+#             OAUTH_TOKEN_ARG = "AgAAgfAAAAD4beAkEsWrefhNeyN1TVYjGT1k",
+#             ORGANIZATION_ID_ARG =1 23
+#             """
+#         ),
+#         formatter_class=argparse.RawDescriptionHelpFormatter,
+#     )
 
-    def argument_range(value: str) -> int:
-        try:
-            if int(value) < 0 or int(value) > 90:
-                raise argparse.ArgumentTypeError(
-                    f"{value} is invalid. Valid values in range: [0, 90]"
-                )
-        except ValueError:
-            raise argparse.ArgumentTypeError(f"'{value}' is not int value")
-        return int(value)
+#     def argument_range(value: str) -> int:
+#         try:
+#             if int(value) < 0 or int(value) > 90:
+#                 raise argparse.ArgumentTypeError(
+#                     f"{value} is invalid. Valid values in range: [0, 90]"
+#                 )
+#         except ValueError:
+#             raise argparse.ArgumentTypeError(f"'{value}' is not int value")
+#         return int(value)
 
-    parser.add_argument(
-        "--days-ago",
-        help="Number of days ago to search and download audit log records [0, 90]",
-        type=argument_range,
-        required=False,
-    )
-    return parser
+#     parser.add_argument(
+#         "--days-ago",
+#         help="Number of days ago to search and download audit log records [0, 90]",
+#         type=argument_range,
+#         required=False,
+#     )
+#     return parser
 
 def main():
-    parsr = arg_parser()
-    try:
-        args = parsr.parse_args()
-    except Exception as e:
-        logger.exception(f"{type(e).__name__} at line {e.__traceback__.tb_lineno} of {__file__}: {e}")
+    # parsr = arg_parser()
+    # try:
+    #     args = parsr.parse_args()
+    # except Exception as e:
+    #     logger.exception(f"{type(e).__name__} at line {e.__traceback__.tb_lineno} of {__file__}: {e}")
 
     try:
         settings = get_settings()
@@ -107,23 +116,55 @@ def main():
         sys.exit(EXIT_CODE)
     except KeyError as key:
         logger.error(f"ERROR: Required environment vars not provided: {key}")
-        parsr.print_usage()
+        # parsr.print_usage()
         sys.exit(EXIT_CODE)
 
-    if args.days_ago is None: 
-        logger.warning("Command line argument 'days_ago' is not set. Using default value - {DEFAULT_DAYS_AGO} days ago  }.")
-        args.date_ago = DEFAULT_DAYS_AGO
+    # if args.days_ago is None: 
+    #     logger.warning(f"Command line argument 'days_ago' is not set. Using default value - {DEFAULT_DAYS_AGO} days ago.")
+    #     args.days_ago = DEFAULT_DAYS_AGO
 
-    days_ago = args.days_ago
+    # days_ago = args.days_ago
     imap_messages = {}
-    records = fetch_audit_logs(settings, days_ago=days_ago)
+    users = get_all_users(settings)
+    if not users:
+        logger.error("No users found in Yandex 360. Exiting.")
+        sys.exit(EXIT_CODE)
+
+    if not FILTERED_MAILBOXES:
+        logger.error("Param FILTERED_MAILBOXES is empty. Exiting.")
+        sys.exit(EXIT_CODE)
+
+    filtered_uids = []
+    filtered_aliases = [u.split("@")[0] for u in FILTERED_MAILBOXES]
+    for user in users:
+        aliases = []
+        aliases = [u["value"].split("@")[0] for u in user["contacts"] if u["type"] == "email"]
+        for alias in aliases:
+            if alias in filtered_aliases:
+                filtered_uids.append(user["id"])
+    
+    if not filtered_uids:
+        logger.error("Didnn't find any users with email addresses in FILTERED_MAILBOXES. Exiting.")
+        sys.exit(EXIT_CODE)
+
+    if len(filtered_uids) != len(FILTERED_MAILBOXES):
+        logger.error("Some users with email addresses in FILTERED_MAILBOXES were not found. Exiting.")
+        sys.exit(EXIT_CODE)
+
+    logger.info(f"FILTERED_MAILBOXES email ids: {filtered_uids}.")
+
+    first_date =  datetime.now() + relativedelta(months = -1, day = 1, hour = 0, minute = 0, second = 0) + relativedelta(days = -1)
+    last_date = datetime.now() + relativedelta(day = 2, hour = 0, minute = 0, second = 0)
+    logger.info(f"Search data from {first_date.strftime("%Y-%m-%d")} to {last_date.strftime("%Y-%m-%d")}.")
+
+    records = fetch_audit_logs(settings, filtered_uids, first_date, last_date)
     records = FilterEvents(records)
     target_records = []
     #print(records)
     for user in FILTERED_MAILBOXES:
         token = get_user_token(user, settings)
         if token:
-            asyncio.run(get_imap_messages(user, token, days_ago, imap_messages))
+            asyncio.run(get_imap_messages(user, token, first_date, last_date, imap_messages))
             #print(imap_messages)
         for record in records:
             if record["userLogin"] == user and record["msgId"]:
@@ -145,7 +186,7 @@ def main():
                 d["msgId"] = record["msgId"]
                 target_records.append(d)
 
-    last_day_of_prev_month = datetime.now().replace(day=1) - timedelta(days=1)
+    last_day_of_prev_month = datetime.now() + relativedelta(months=-1, day=1)
     check_value = last_day_of_prev_month.strftime("%Y-%m")
     last_month_records = []
     for record in target_records:
@@ -164,12 +205,36 @@ def main():
 
     logger.info("Sript finished.")
 
+def get_all_users(settings, file=False):
+    """
+    Get all users of the organisation and write info about them in file.
+    """
+    logger.info("Getting all users of the organisation...")
+    url = f"{DEFAULT_360_API_URL}/directory/v1/org/{settings.organization_id}/users?perPage=100"
+    headers = {"Authorization": f"OAuth {settings.oauth_token}"}
+    try:
+        response = requests.get(url, headers=headers)
+        if response.ok:
+                users = response.json()['users']
+                for i in range(2, response.json()["pages"] + 1):
+                    response = requests.get(f"{url}&page={i}", headers=headers)
+                    if response.ok:
+                        users.extend(response.json()['users'])
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"{type(e).__name__} at line {e.__traceback__.tb_lineno} of {__file__}: {e}")
+        return []
+    
+    logger.info(f"{len(users)} users found.")
+    return users
+
 def FilterEvents(events: list) -> list:
     filtered_events = []
     for event in events:
         if event["eventType"] in FILTERED_EVENTS and event["userLogin"] in FILTERED_MAILBOXES:
             filtered_events.append(event)
     return filtered_events
+
 
 def get_settings():
     settings = SettingParams (
@@ -182,8 +247,12 @@ def get_settings():
     )
     return settings
 
-def fetch_audit_logs(settings: "SettingParams", days_ago: int):
-    day_last_check = (datetime.now().replace(hour=0, minute=0, second=0) - timedelta(days=days_ago)).strftime("%Y-%m-%dT%H:%M:%SZ")
+def fetch_audit_logs(settings: "SettingParams", filtered_uids: list, first_date: datetime, last_date: datetime):
+    # last_date =  datetime.now() + relativedelta(months = -1, day = 1) + relativedelta(days = -1)
+    # first_date = datetime.now() + relativedelta(day = 2)
+    final_first_date = (first_date.replace(day=1, hour=0, minute=0, second=0)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    final_last_date = (last_date.replace(day=1, hour=0, minute=0, second=0)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    #day_last_check = (datetime.now().replace(hour=0, minute=0, second=0) - timedelta(days=days_ago)).strftime("%Y-%m-%dT%H:%M:%SZ")
     log_records = []
 
     url = f"{DEFAULT_360_API_URL}/security/v1/org/{settings.organization_id}/audit_log/mail"
@@ -191,7 +260,10 @@ def fetch_audit_logs(settings: "SettingParams", days_ago: int):
 
     params = {
         "pageSize": 100,
-        "afterDate": day_last_check,
+        "afterDate": final_first_date,
+        "beforeDate": final_last_date,
+        "includeUids": filtered_uids,
+        "types": FILTERED_EVENTS
     }
     
     while True:           
@@ -267,13 +339,7 @@ def parse_to_dict(data: dict):
     d["actorUid"] = data.get("actorUid",'')
     return d
     
-@dataclass
-class SettingParams:
-    oauth_token: str
-    organization_id: int
-    output_file: str
-    application_client_id: str
-    application_client_secret: str
+
 
 def log_error(info="Error"):
     logger.error(info)
@@ -303,12 +369,12 @@ def get_user_token(user_mail: str, settings: "SettingParams"):
         logger.exception(f"Error during GET request: {response.status_code}")
     return ''
 
-async def get_imap_messages(user_mail: str, token: str, days_ago: int, imap_messages: dict):
+async def get_imap_messages(user_mail: str, token: str, start_date: datetime, end_date: datetime, imap_messages: dict):
     message_dict = {}
     loop = asyncio.get_running_loop()
     today = datetime.now() 
-    date_days_ago = today - timedelta(days=days_ago)
-    search_criteria = f'(SINCE {date_days_ago.strftime("%d-%b-%Y")})'
+    # date_days_ago = today - timedelta(days=days_ago)
+    search_criteria = f'(SINCE {start_date.strftime("%d-%b-%Y")}) BEFORE {end_date.strftime("%d-%b-%Y")}'
     with concurrent.futures.ThreadPoolExecutor() as pool:
         logger.debug(f"Connect to IMAP server for {user_mail}")
         await loop.run_in_executor(pool, log_debug, f"Connect to IMAP server for {user_mail}")
