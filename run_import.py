@@ -48,7 +48,7 @@ EXIT_CODE = 1
 logger = logging.getLogger("get_audit_log")
 logger.setLevel(logging.DEBUG)
 console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.DEBUG)
+console_handler.setLevel(logging.INFO)
 console_handler.setFormatter(logging.Formatter('%(asctime)s.%(msecs)03d %(levelname)s:\t%(message)s', datefmt='%Y-%m-%d %H:%M:%S'))
 file_handler = handlers.TimedRotatingFileHandler(LOG_FILE, when='D', interval=1, backupCount=7, encoding='utf-8')
 file_handler.setLevel(logging.DEBUG)
@@ -411,7 +411,7 @@ async def get_imap_messages(user_mail: str, token: str, start_date: datetime, en
                                 message_dict["flags"] = flags.decode("ascii")
                                 message_dict["seqnum"] = int(seqnum.decode("ascii"))
                                 message_dict["folder"] = folder
-                                print(message_attrs)
+                                #print(message_attrs)
 
                                 # uid fetch always includes the UID of the last message in the mailbox
                                 # cf https://tools.ietf.org/html/rfc3501#page-61
