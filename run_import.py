@@ -48,7 +48,7 @@ EXIT_CODE = 1
 logger = logging.getLogger("get_audit_log")
 logger.setLevel(logging.DEBUG)
 console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.INFO)
+console_handler.setLevel(logging.DEBUG)
 console_handler.setFormatter(logging.Formatter('%(asctime)s.%(msecs)03d %(levelname)s:\t%(message)s', datefmt='%Y-%m-%d %H:%M:%S'))
 file_handler = handlers.TimedRotatingFileHandler(LOG_FILE, when='D', interval=1, backupCount=7, encoding='utf-8')
 file_handler.setLevel(logging.DEBUG)
@@ -112,14 +112,17 @@ def main():
     records = fetch_audit_logs(settings, filtered_uids, first_date, last_date)
     file_name = f'raw_search_result_{datetime.now().strftime("%y-%m-%d_%H-%M-%S")}.csv'
     WriteToFile(records, file_name)
-    records = FilterEvents(records)
+    #records = FilterEvents(records)
     target_records = []
     #print(records)
     for user in FILTERED_MAILBOXES:
         token = get_user_token(user, settings)
         if token:
             asyncio.run(get_imap_messages(user, token, first_date, last_date, imap_messages))
-            #print(imap_messages)
+            for k, v in imap_messages.items():
+                logger.debug(f'{k} - {v}')
+            logger.debug('\n')
+            logger.debug(imap_messages)
         for record in records:
             if record["userLogin"] == user and record["msgId"]:
                 d = {}
