@@ -64,50 +64,7 @@ class SettingParams:
     application_client_id: str
     application_client_secret: str
     
-# def arg_parser():
-#     parser = argparse.ArgumentParser(
-#         description=dedent(
-#             """
-#             Script for downloading audit log records from Yandex 360.
-
-#             Define Environment variables or use .env file to set values of those variables:
-#             OAUTH_TOKEN_ARG - OAuth Token,
-#             ORGANIZATION_ID_ARG - Organization ID,
-#             APPLICATION_CLIENT_ID_ARG - WEB Application ClientID,
-#             APPLICATION_CLIENT_SECRET_ARG - WEB Application secret
-
-#             For example:
-#             OAUTH_TOKEN_ARG = "AgAAgfAAAAD4beAkEsWrefhNeyN1TVYjGT1k",
-#             ORGANIZATION_ID_ARG =1 23
-#             """
-#         ),
-#         formatter_class=argparse.RawDescriptionHelpFormatter,
-#     )
-
-#     def argument_range(value: str) -> int:
-#         try:
-#             if int(value) < 0 or int(value) > 90:
-#                 raise argparse.ArgumentTypeError(
-#                     f"{value} is invalid. Valid values in range: [0, 90]"
-#                 )
-#         except ValueError:
-#             raise argparse.ArgumentTypeError(f"'{value}' is not int value")
-#         return int(value)
-
-#     parser.add_argument(
-#         "--days-ago",
-#         help="Number of days ago to search and download audit log records [0, 90]",
-#         type=argument_range,
-#         required=False,
-#     )
-#     return parser
-
 def main():
-    # parsr = arg_parser()
-    # try:
-    #     args = parsr.parse_args()
-    # except Exception as e:
-    #     logger.exception(f"{type(e).__name__} at line {e.__traceback__.tb_lineno} of {__file__}: {e}")
 
     try:
         settings = get_settings()
@@ -119,11 +76,6 @@ def main():
         # parsr.print_usage()
         sys.exit(EXIT_CODE)
 
-    # if args.days_ago is None: 
-    #     logger.warning(f"Command line argument 'days_ago' is not set. Using default value - {DEFAULT_DAYS_AGO} days ago.")
-    #     args.days_ago = DEFAULT_DAYS_AGO
-
-    # days_ago = args.days_ago
     imap_messages = {}
     users = get_all_users(settings)
     if not users:
@@ -158,6 +110,8 @@ def main():
     logger.info(f"Search data from {first_date.strftime("%Y-%m-%d")} to {last_date.strftime("%Y-%m-%d")}.")
 
     records = fetch_audit_logs(settings, filtered_uids, first_date, last_date)
+    file_name = f'raw_search_result_{datetime.now().strftime("%y-%m-%d_%H-%M-%S")}.csv'
+    WriteToFile(records, file_name)
     records = FilterEvents(records)
     target_records = []
     #print(records)
