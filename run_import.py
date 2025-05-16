@@ -265,7 +265,7 @@ def write_to_ifarma_file(data, filename):
             "Идентификатор": entry["msgId"],
             "Удалено да/нет": entry["deleted"]
         })
-    with open(filename, 'w', encoding='utf-8') as csvfile:
+    with open(filename, 'w', encoding='utf-8', newline='') as csvfile:
         writer = csv.DictWriter(csvfile, fieldnames=field_names, delimiter=';')
 
         writer.writeheader()
